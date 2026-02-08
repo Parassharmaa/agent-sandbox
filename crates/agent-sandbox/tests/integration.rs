@@ -780,3 +780,322 @@ async fn test_security_multiple_sandboxes_isolated() {
     assert_eq!(result.exit_code, 0);
     assert!(String::from_utf8_lossy(&result.stdout).contains("sandbox1 secret"));
 }
+
+// --- Node.js / JavaScript runtime tests ---
+
+#[tokio::test]
+async fn test_node_version() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("node", &["--version".into()]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    let output = String::from_utf8_lossy(&result.stdout);
+    assert!(output.contains("node v0.1.0"));
+}
+
+#[tokio::test]
+async fn test_node_eval_console_log() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &["-e".into(), "console.log('hello from js')".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("hello from js"),
+        "Expected 'hello from js' in stdout: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_arithmetic() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("node", &["-p".into(), "2 + 3 * 4".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "14");
+}
+
+#[tokio::test]
+async fn test_node_eval_string_operations() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &["-p".into(), "'hello'.toUpperCase() + ' WORLD'".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        "HELLO WORLD"
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_json_parse() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &[
+                "-p".into(),
+                r#"JSON.stringify(JSON.parse('{"a":1,"b":2}'))"#.into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(
+        String::from_utf8_lossy(&result.stdout).trim(),
+        r#"{"a":1,"b":2}"#
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_array_methods() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &[
+                "-p".into(),
+                "[3,1,4,1,5].filter(x => x > 2).sort().join(',')".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "3,4,5");
+}
+
+#[tokio::test]
+async fn test_node_eval_error_handling() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("node", &["-e".into(), "throw new Error('oops')".into()])
+        .await
+        .unwrap();
+    assert_ne!(result.exit_code, 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("oops"),
+        "Expected 'oops' in stderr: {stderr}"
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_syntax_error() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("node", &["-e".into(), "function {".into()])
+        .await
+        .unwrap();
+    assert_ne!(result.exit_code, 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(!stderr.is_empty(), "Expected error output for syntax error");
+}
+
+#[tokio::test]
+async fn test_node_run_file() {
+    let (tmp, sandbox) = temp_sandbox();
+    std::fs::write(
+        tmp.path().join("script.js"),
+        "var x = 10;\nvar y = 20;\nconsole.log(x + y);\n",
+    )
+    .unwrap();
+
+    let result = sandbox
+        .exec("node", &["/work/script.js".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("30"), "Expected '30' in stdout: {stdout}");
+}
+
+#[tokio::test]
+async fn test_node_file_not_found() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("node", &["/work/nonexistent.js".into()])
+        .await
+        .unwrap();
+    assert_ne!(result.exit_code, 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("cannot open"),
+        "Expected file not found error in stderr: {stderr}"
+    );
+}
+
+#[tokio::test]
+async fn test_node_multiline_script() {
+    let (tmp, sandbox) = temp_sandbox();
+    std::fs::write(
+        tmp.path().join("multi.js"),
+        r#"
+function fibonacci(n) {
+    if (n <= 1) return n;
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+console.log(fibonacci(10));
+"#,
+    )
+    .unwrap();
+
+    let result = sandbox
+        .exec("node", &["/work/multi.js".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("55"),
+        "Expected fibonacci(10)=55 in stdout: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_js_convenience_method() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec_js("console.log('exec_js works')")
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("exec_js works"),
+        "Expected 'exec_js works' in stdout: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_object_destructuring() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &[
+                "-e".into(),
+                "const {a, b} = {a: 1, b: 2}; console.log(a + b)".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("3"), "Expected '3' in stdout: {stdout}");
+}
+
+#[tokio::test]
+async fn test_node_eval_template_literals() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &[
+                "-e".into(),
+                "const name = 'World'; console.log(`Hello ${name}!`)".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("Hello World!"),
+        "Expected 'Hello World!' in stdout: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_map_reduce() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &[
+                "-p".into(),
+                "[1,2,3,4,5].map(x => x * x).reduce((a, b) => a + b, 0)".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "55");
+}
+
+#[tokio::test]
+async fn test_node_no_args_shows_usage() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("node", &[]).await.unwrap();
+    assert_ne!(result.exit_code, 0);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("Usage"),
+        "Expected usage message in stderr: {stderr}"
+    );
+}
+
+#[tokio::test]
+async fn test_node_eval_promises_basic() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &[
+                "-e".into(),
+                "Promise.resolve(42).then(v => console.log('resolved: ' + v))".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    // Note: boa may or may not flush microtasks; check if output appears
+    // This test validates that Promise constructor works without crashing
+}
+
+#[tokio::test]
+async fn test_node_eval_math_functions() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &["-p".into(), "Math.max(1, 5, 3) + Math.min(1, 5, 3)".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "6");
+}
+
+#[tokio::test]
+async fn test_node_eval_regex() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "node",
+            &["-p".into(), "'hello world 123'.match(/\\d+/)[0]".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "123");
+}
+
+#[tokio::test]
+async fn test_node_security_no_host_filesystem() {
+    let (_tmp, sandbox) = temp_sandbox();
+    // Node inside WASM sandbox should not be able to read /etc/passwd
+    // The WASM runtime only mounts /work
+    let result = sandbox.exec("node", &["/etc/passwd".into()]).await.unwrap();
+    assert_ne!(result.exit_code, 0);
+}

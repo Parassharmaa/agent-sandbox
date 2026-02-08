@@ -104,6 +104,22 @@ impl Sandbox {
         })
     }
 
+    /// Execute JavaScript code inside the sandbox using the built-in JS engine.
+    #[napi]
+    pub async fn exec_js(&self, code: String) -> Result<ExecResult> {
+        let result = self
+            .inner
+            .exec_js(&code)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(ExecResult {
+            exit_code: result.exit_code,
+            stdout: Buffer::from(result.stdout),
+            stderr: Buffer::from(result.stderr),
+        })
+    }
+
     #[napi]
     pub async fn read_file(&self, path: String) -> Result<Buffer> {
         let content = self

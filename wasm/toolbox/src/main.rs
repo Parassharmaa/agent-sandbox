@@ -90,6 +90,9 @@ fn dispatch(cmd: &str, args: &[String]) -> i32 {
         // Version control
         "git" => tools::git::run(args),
 
+        // JavaScript runtime
+        "node" => tools::node::run(args),
+
         // Shell utils
         "echo" => tools::echo::run(args),
         "printf" => tools::printf::run(args),
@@ -142,6 +145,7 @@ fn print_available_commands() {
         "gzip",
         "zip",
         "git",
+        "node",
         "echo",
         "printf",
         "env",

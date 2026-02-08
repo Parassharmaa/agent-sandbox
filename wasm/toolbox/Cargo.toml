@@ -18,3 +18,5 @@ similar = "2.7"
 serde_json = "1"
 sha1_smol = "1"
 zip = { version = "2", default-features = false }
+boa_engine = { version = "0.21", default-features = false }
+boa_runtime = { version = "0.21", default-features = false }

@@ -40,6 +40,8 @@ pub const AVAILABLE_TOOLS: &[&str] = &[
     "zip",
     // Version control
     "git",
+    // JavaScript runtime
+    "node",
     // Shell utils
     "echo",
     "printf",

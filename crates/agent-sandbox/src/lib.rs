@@ -47,6 +47,12 @@ impl Sandbox {
         self.runtime.exec(command, args).await
     }
 
+    /// Execute JavaScript code inside the sandbox using the built-in JS engine.
+    pub async fn exec_js(&self, code: &str) -> Result<ExecResult> {
+        self.exec("node", &["-e".to_string(), code.to_string()])
+            .await
+    }
+
     /// Read a file from the sandbox's work directory.
     pub async fn read_file(&self, path: &str) -> Result<Vec<u8>> {
         self.check_destroyed()?;

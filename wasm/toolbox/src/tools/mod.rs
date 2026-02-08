@@ -45,6 +45,9 @@ pub mod zip;
 // Version control
 pub mod git;
 
+// JavaScript runtime
+pub mod node;
+
 // Shell utils
 pub mod basename;
 pub mod dirname;

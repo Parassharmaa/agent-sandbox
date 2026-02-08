@@ -1,6 +1,6 @@
 # @parassharmaa/agent-sandbox
 
-Node.js bindings for [agent-sandbox](https://github.com/Parassharmaa/agent-sandbox) — a secure, WASM-based sandbox for AI agents with 40+ built-in CLI tools.
+Node.js bindings for [agent-sandbox](https://github.com/Parassharmaa/agent-sandbox) — a secure, WASM-based sandbox for AI agents with 40+ built-in CLI tools and a JavaScript runtime.
 
 ## Installation
 
@@ -42,6 +42,32 @@ const changes = await sandbox.diff();
 await sandbox.destroy();
 ```
 
+### JavaScript Runtime
+
+Execute JavaScript code inside the WASM sandbox using the built-in Boa engine:
+
+```js
+// Inline evaluation
+const result = await sandbox.exec("node", ["-e", "console.log('hello from JS')"]);
+
+// Evaluate and print result
+const calc = await sandbox.exec("node", ["-p", "2 + 3 * 4"]);
+console.log(calc.stdout.toString().trim()); // "14"
+
+// Run a script file
+await sandbox.writeFile("script.js", Buffer.from(`
+  const data = [1, 2, 3, 4, 5];
+  const sum = data.reduce((a, b) => a + b, 0);
+  console.log(JSON.stringify({ sum, avg: sum / data.length }));
+`));
+await sandbox.exec("node", ["/work/script.js"]);
+
+// Convenience method — execJs(code) wraps exec("node", ["-e", code])
+const jsResult = await sandbox.execJs("console.log('quick and easy')");
+```
+
+Supports ES2023+ features (arrow functions, destructuring, template literals, Promises, JSON, Math, RegExp, Array methods, etc.). No network access or Node.js built-in modules — runs in pure WASM isolation.
+
 ### Configuration Options
 
 ```js
@@ -63,7 +89,7 @@ const sandbox = new Sandbox({
 
 ```js
 const tools = Sandbox.availableTools();
-// ["cat", "grep", "find", "sed", "awk", "jq", "git", "tar", ...]
+// ["cat", "grep", "find", "sed", "jq", "git", "node", "tar", ...]
 ```
 
 ## Security
@@ -72,6 +98,7 @@ const tools = Sandbox.availableTools();
 - Path traversal attacks are blocked
 - Environment variables are isolated from the host
 - Each sandbox instance is fully isolated from others
+- JS runtime runs inside WASM — no network, no host access
 
 ## License
 

@@ -559,3 +559,152 @@ test('security: multiple sandboxes are isolated', async (t) => {
   fs.rmSync(tmpDir1, { recursive: true });
   fs.rmSync(tmpDir2, { recursive: true });
 });
+
+// --- Node.js / JavaScript runtime tests ---
+
+test('node --version returns version string', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['--version']);
+  t.is(result.exitCode, 0);
+  t.true(result.stdout.toString().includes('node v0.1.0'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node -e evaluates inline JavaScript', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-e', "console.log('hello from js')"]);
+  t.is(result.exitCode, 0);
+  t.true(result.stdout.toString().includes('hello from js'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node -p evaluates and prints result', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-p', '2 + 3 * 4']);
+  t.is(result.exitCode, 0);
+  t.is(result.stdout.toString().trim(), '14');
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node runs script from file', async (t) => {
+  const tmpDir = createTempDir();
+  fs.writeFileSync(path.join(tmpDir, 'script.js'), 'var x = 10; var y = 20; console.log(x + y);');
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['/work/script.js']);
+  t.is(result.exitCode, 0);
+  t.true(result.stdout.toString().includes('30'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node handles syntax errors', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-e', 'function {']);
+  t.not(result.exitCode, 0);
+  t.true(result.stderr.toString().length > 0);
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node handles runtime errors', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-e', "throw new Error('oops')"]);
+  t.not(result.exitCode, 0);
+  t.true(result.stderr.toString().includes('oops'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node JSON operations', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-p', 'JSON.stringify({a: 1, b: [2,3]})']);
+  t.is(result.exitCode, 0);
+  const parsed = JSON.parse(result.stdout.toString().trim());
+  t.deepEqual(parsed, { a: 1, b: [2, 3] });
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node array methods', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-p', "[5,3,1,4,2].sort().join(',')"])
+  t.is(result.exitCode, 0);
+  t.is(result.stdout.toString().trim(), '1,2,3,4,5');
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node template literals', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['-e', "const name = 'World'; console.log(`Hello ${name}!`)"]);
+  t.is(result.exitCode, 0);
+  t.true(result.stdout.toString().includes('Hello World!'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node fibonacci script', async (t) => {
+  const tmpDir = createTempDir();
+  fs.writeFileSync(
+    path.join(tmpDir, 'fib.js'),
+    `function fib(n) {
+      if (n <= 1) return n;
+      return fib(n - 1) + fib(n - 2);
+    }
+    console.log(fib(10));`
+  );
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['/work/fib.js']);
+  t.is(result.exitCode, 0);
+  t.true(result.stdout.toString().includes('55'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('execJs convenience method works', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.execJs("console.log('execJs works')");
+  t.is(result.exitCode, 0);
+  t.true(result.stdout.toString().includes('execJs works'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('execJs evaluates complex expressions', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.execJs(`
+    const data = [1, 2, 3, 4, 5];
+    const sum = data.reduce((a, b) => a + b, 0);
+    const avg = sum / data.length;
+    console.log('sum=' + sum + ' avg=' + avg);
+  `);
+  t.is(result.exitCode, 0);
+  const output = result.stdout.toString();
+  t.true(output.includes('sum=15'));
+  t.true(output.includes('avg=3'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('execJs returns error for invalid code', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.execJs("throw new Error('test error')");
+  t.not(result.exitCode, 0);
+  t.true(result.stderr.toString().includes('test error'));
+  fs.rmSync(tmpDir, { recursive: true });
+});
+
+test('node is listed in available tools', (t) => {
+  const tools = Sandbox.availableTools();
+  t.true(tools.includes('node'));
+});
+
+test('security: node cannot access host filesystem', async (t) => {
+  const tmpDir = createTempDir();
+  const sandbox = new Sandbox({ workDir: tmpDir });
+  const result = await sandbox.exec('node', ['/etc/passwd']);
+  t.not(result.exitCode, 0);
+  fs.rmSync(tmpDir, { recursive: true });
+});

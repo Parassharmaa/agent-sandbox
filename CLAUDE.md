@@ -50,13 +50,13 @@ Workspace lints: `deprecated = "deny"`, `unused_imports = "warn"`, `dead_code = 
 
 This is a WASM-based sandbox that executes commands in an isolated Wasmtime/WASI environment. Three main components:
 
-**`crates/agent-sandbox/`** — Core Rust library. The `Sandbox` struct is the public API (`new`, `exec`, `read_file`, `write_file`, `list_dir`, `diff`, `destroy`). Key modules:
+**`crates/agent-sandbox/`** — Core Rust library. The `Sandbox` struct is the public API (`new`, `exec`, `exec_js`, `read_file`, `write_file`, `list_dir`, `diff`, `destroy`). Key modules:
 - `runtime/mod.rs` — Wasmtime engine with global module cache (`OnceLock`), fuel limits, wall-clock timeout via `tokio::time::timeout`, and `spawn_blocking` for sync WASM execution.
 - `fs/capability.rs` — Path validation preventing traversal attacks. All host-side file ops go through `validate_path()`.
 - `fs/overlay.rs` — SHA-256 snapshot diffing to detect created/modified/deleted files.
 - `toolbox/mod.rs` — Allowlist of available commands checked before any `exec()`.
 
-**`wasm/toolbox/`** — BusyBox-style multi-call WASM binary (target: `wasm32-wasip1`). Single entry point dispatches to 40+ tool implementations via `TOOLBOX_CMD` env var. Compiled once and embedded into the core crate via `include_bytes!(env!("TOOLBOX_WASM_PATH"))` in `build.rs`.
+**`wasm/toolbox/`** — BusyBox-style multi-call WASM binary (target: `wasm32-wasip1`). Single entry point dispatches to 40+ tool implementations via `TOOLBOX_CMD` env var. Includes a built-in JavaScript runtime (`node` command) powered by Boa engine. Compiled once and embedded into the core crate via `include_bytes!(env!("TOOLBOX_WASM_PATH"))` in `build.rs`.
 
 **`crates/agent-sandbox-js/`** — NAPI bindings exposing `Sandbox` class to Node.js. Async methods, cross-platform builds (darwin-arm64/x64, linux-x64-gnu/arm64-gnu, win32-x64-msvc). Tests use AVA + tsx.
 
