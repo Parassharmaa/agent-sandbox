@@ -2,6 +2,22 @@
 
 A secure, embeddable, WASM-based sandbox for AI agents. 40+ built-in CLI tools, <13ms startup, no Docker/VMs required.
 
+## Installation
+
+### Rust
+
+```bash
+cargo add agent-sandbox
+```
+
+### Node.js
+
+```bash
+npm install @parassharmaa/agent-sandbox
+```
+
+Prebuilt binaries are available for macOS (arm64, x64), Linux (x64, arm64), and Windows (x64).
+
 ## Quick Start
 
 ### Rust

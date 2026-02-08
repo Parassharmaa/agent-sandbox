@@ -5,6 +5,7 @@ edition = "2024"
 description = "A sandboxed execution environment for AI agents via WASM"
 license = "MIT"
 repository = "https://github.com/Parassharmaa/agent-sandbox"
+readme = "../../README.md"
 keywords = ["sandbox", "wasm", "wasi", "ai-agent", "security"]
 categories = ["wasm", "development-tools"]
 
