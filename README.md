@@ -12,6 +12,8 @@ A secure, WASM-based sandboxed execution environment for AI agents. Runs untrust
 
 ## Quick Start
 
+### Rust
+
 ```rust
 use agent_sandbox::{Sandbox, config::SandboxConfig};
 
@@ -23,6 +25,25 @@ let sandbox = Sandbox::new(config)?;
 
 let result = sandbox.exec("grep", &["TODO".into(), "/work/main.rs".into()]).await?;
 println!("{}", String::from_utf8_lossy(&result.stdout));
+```
+
+### Node.js
+
+```js
+import { Sandbox } from "@parassharmaa/agent-sandbox";
+
+const sandbox = new Sandbox({ workDir: "/path/to/workdir" });
+
+const result = await sandbox.exec("grep", ["TODO", "/work/main.rs"]);
+console.log(result.stdout.toString());
+
+await sandbox.writeFile("hello.txt", Buffer.from("Hello from sandbox!"));
+const content = await sandbox.readFile("hello.txt");
+
+const changes = await sandbox.diff();
+console.log("Changed files:", changes);
+
+await sandbox.destroy();
 ```
 
 ## License
