@@ -1,16 +1,31 @@
 {
   "name": "@parassharmaa/agent-sandbox-darwin-arm64",
-  "version": "0.1.0",
-  "cpu": ["arm64"],
+  "version": "0.1.1",
+  "cpu": [
+    "arm64"
+  ],
   "main": "agent-sandbox.darwin-arm64.node",
-  "files": ["agent-sandbox.darwin-arm64.node"],
+  "files": [
+    "agent-sandbox.darwin-arm64.node"
+  ],
   "description": "Sandboxed execution environment for AI agents via WASM",
-  "keywords": ["agent", "sandbox", "wasm", "wasi", "security", "execution"],
+  "keywords": [
+    "agent",
+    "sandbox",
+    "wasm",
+    "wasi",
+    "security",
+    "execution"
+  ],
   "license": "MIT",
-  "engines": { "node": ">= 18" },
+  "engines": {
+    "node": ">= 18"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Parassharmaa/agent-sandbox"
   },
-  "os": ["darwin"]
+  "os": [
+    "darwin"
+  ]
 }

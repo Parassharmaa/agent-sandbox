@@ -1,17 +1,34 @@
 {
   "name": "@parassharmaa/agent-sandbox-linux-x64-gnu",
-  "version": "0.1.0",
-  "cpu": ["x64"],
+  "version": "0.1.1",
+  "cpu": [
+    "x64"
+  ],
   "main": "agent-sandbox.linux-x64-gnu.node",
-  "files": ["agent-sandbox.linux-x64-gnu.node"],
+  "files": [
+    "agent-sandbox.linux-x64-gnu.node"
+  ],
   "description": "Sandboxed execution environment for AI agents via WASM",
-  "keywords": ["agent", "sandbox", "wasm", "wasi", "security", "execution"],
+  "keywords": [
+    "agent",
+    "sandbox",
+    "wasm",
+    "wasi",
+    "security",
+    "execution"
+  ],
   "license": "MIT",
-  "engines": { "node": ">= 18" },
+  "engines": {
+    "node": ">= 18"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Parassharmaa/agent-sandbox"
   },
-  "os": ["linux"],
-  "libc": ["glibc"]
+  "os": [
+    "linux"
+  ],
+  "libc": [
+    "glibc"
+  ]
 }
