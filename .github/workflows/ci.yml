@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build WASM toolbox
+        run: cargo +stable build --target wasm32-wasip1 -p agent-toolbox --release
+
+      - name: Check
+        run: cargo +stable check --workspace
+
+      - name: Test
+        run: cargo +stable test --workspace
+
+      - name: Clippy
+        run: cargo +stable clippy --workspace -- -D warnings
+
+      - name: Format
+        run: cargo +nightly fmt --all -- --check
+
+  js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build WASM toolbox
+        run: cargo +stable build --target wasm32-wasip1 -p agent-toolbox --release
+
+      - name: Build NAPI bindings
+        working-directory: crates/agent-sandbox-js
+        run: |
+          npm install
+          npm run build:debug
+
+      - name: Run JS tests
+        working-directory: crates/agent-sandbox-js
+        run: npm test

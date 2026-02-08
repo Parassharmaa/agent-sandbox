@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/agent-sandbox",
+    "crates/agent-sandbox-js",
+]
+exclude = [
+    "wasm/toolbox",
+]
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"
+codegen-units = 1
+
+[workspace.lints.rust]
+deprecated = "deny"
+unused_imports = "warn"
+dead_code = "warn"

@@ -1,0 +1,24 @@
+[package]
+name = "agent-sandbox"
+version = "0.1.0"
+edition = "2024"
+description = "A sandboxed execution environment for AI agents via WASM"
+license = "MIT"
+repository = "https://github.com/Parassharmaa/agent-sandbox"
+keywords = ["sandbox", "wasm", "wasi", "ai-agent", "security"]
+categories = ["wasm", "development-tools"]
+
+[lints]
+workspace = true
+
+[dependencies]
+wasmtime = "41"
+wasmtime-wasi = "41"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "fs", "io-util", "time"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tempfile = "3"
+sha2 = "0.10"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

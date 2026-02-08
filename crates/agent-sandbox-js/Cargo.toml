@@ -1,0 +1,22 @@
+[package]
+name = "agent-sandbox-js"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+agent-sandbox = { path = "../agent-sandbox" }
+napi = { version = "3", features = ["async", "serde-json"] }
+napi-derive = "3"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+napi-build = "2"

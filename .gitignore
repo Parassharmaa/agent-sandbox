@@ -1,0 +1,17 @@
+# Rust
+target/
+Cargo.lock
+
+# Node.js
+node_modules/
+*.node
+index.js
+index.d.ts
+__test__/compiled/
+
+# WASM build artifacts
+wasm/toolbox/target/
+*.wasm
+
+# OS
+.DS_Store
