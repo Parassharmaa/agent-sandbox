@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Build the WASM toolbox (must be done first — embedded into the core crate at compile time)
-cd wasm/toolbox && cargo build --target wasm32-wasip1 -p agent-toolbox --release
+cargo build --target wasm32-wasip1 --release --manifest-path wasm/toolbox/Cargo.toml
 
 # Build the core sandbox library
 cargo build -p agent-sandbox

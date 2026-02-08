@@ -25,7 +25,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build WASM toolbox
-        run: cargo +stable build --target wasm32-wasip1 -p agent-toolbox --release
+        run: cargo +stable build --target wasm32-wasip1 --release --manifest-path wasm/toolbox/Cargo.toml
 
       - name: Check
         run: cargo +stable check --workspace
@@ -55,7 +55,7 @@ jobs:
           node-version: 20
 
       - name: Build WASM toolbox
-        run: cargo +stable build --target wasm32-wasip1 -p agent-toolbox --release
+        run: cargo +stable build --target wasm32-wasip1 --release --manifest-path wasm/toolbox/Cargo.toml
 
       - name: Build NAPI bindings
         working-directory: crates/agent-sandbox-js
