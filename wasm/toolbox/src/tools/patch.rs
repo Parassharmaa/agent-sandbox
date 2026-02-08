@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::{self, BufRead};
+use std::path::Path;
 
 pub fn run(args: &[String]) -> i32 {
     let mut input_file: Option<String> = None;
@@ -89,6 +90,20 @@ fn apply_unified_diff(patch: &str, strip_level: usize) -> i32 {
                 .unwrap();
             let target_path = strip_path(target_path, strip_level);
             i += 2;
+
+            // Validate target path doesn't escape working directory
+            let target = Path::new(&target_path);
+            if target.is_absolute()
+                || target.components().any(|c| {
+                    matches!(c, std::path::Component::ParentDir)
+                })
+            {
+                eprintln!(
+                    "patch: refusing to patch '{}': path traversal detected",
+                    target_path
+                );
+                return 1;
+            }
 
             let original = match fs::read_to_string(&target_path) {
                 Ok(c) => c,

@@ -172,15 +172,43 @@ fn extract_tar(
     };
 
     let mut ar = tar::Archive::new(reader);
-    let dest = directory.as_deref().unwrap_or(".");
+    let dest = Path::new(directory.as_deref().unwrap_or("."));
+    let dest_canonical = match dest.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("tar: cannot resolve destination '{}': {}", dest.display(), e);
+            return 1;
+        }
+    };
 
     for entry in ar.entries().unwrap() {
         match entry {
             Ok(mut entry) => {
-                if verbose && let Ok(path) = entry.path() {
-                    eprintln!("{}", path.display());
+                let entry_path = match entry.path() {
+                    Ok(p) => p.into_owned(),
+                    Err(e) => {
+                        eprintln!("tar: {}", e);
+                        return 1;
+                    }
+                };
+
+                // Reject entries with absolute paths or path traversal components
+                if entry_path.is_absolute()
+                    || entry_path.components().any(|c| {
+                        matches!(c, std::path::Component::ParentDir)
+                    })
+                {
+                    eprintln!(
+                        "tar: refusing to extract '{}': path traversal detected",
+                        entry_path.display()
+                    );
+                    return 1;
                 }
-                if let Err(e) = entry.unpack_in(dest) {
+
+                if verbose {
+                    eprintln!("{}", entry_path.display());
+                }
+                if let Err(e) = entry.unpack_in(&dest_canonical) {
                     eprintln!("tar: {}", e);
                     return 1;
                 }

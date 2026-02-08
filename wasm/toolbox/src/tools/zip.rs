@@ -84,6 +84,13 @@ fn extract(args: &[String]) -> i32 {
     };
 
     let output_path = Path::new(output_dir);
+    let output_canonical = match output_path.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("zip: cannot resolve output dir '{}': {}", output_dir, e);
+            return 1;
+        }
+    };
     let mut count = 0;
 
     for i in 0..archive.len() {
@@ -96,7 +103,22 @@ fn extract(args: &[String]) -> i32 {
         };
 
         let name = entry.name().to_string();
-        let out_path = output_path.join(&name);
+
+        // Reject entries with path traversal or absolute paths
+        let entry_path = Path::new(&name);
+        if entry_path.is_absolute()
+            || entry_path.components().any(|c| {
+                matches!(c, std::path::Component::ParentDir)
+            })
+        {
+            eprintln!(
+                "zip: refusing to extract '{}': path traversal detected",
+                name
+            );
+            return 1;
+        }
+
+        let out_path = output_canonical.join(&name);
 
         if name.ends_with('/') {
             let _ = fs::create_dir_all(&out_path);

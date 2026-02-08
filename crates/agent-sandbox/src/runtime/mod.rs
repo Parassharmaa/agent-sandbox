@@ -1,6 +1,6 @@
 use std::sync::{Arc, OnceLock};
 
-use wasmtime::{Config, Engine, Linker, Module, Store, Trap};
+use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, Trap};
 use wasmtime_wasi::WasiCtx;
 use wasmtime_wasi::p2::pipe::{MemoryInputPipe, MemoryOutputPipe};
 
@@ -13,6 +13,12 @@ pub struct ExecResult {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+}
+
+/// Store data combining WASI context with resource limits.
+struct SandboxState {
+    wasi: wasmtime_wasi::p1::WasiP1Ctx,
+    limits: StoreLimits,
 }
 
 /// Cached WASM engine and compiled module shared across all Sandbox instances.
@@ -162,14 +168,20 @@ fn exec_sync(
     // Build the WASIp1 context
     let wasi_p1 = builder.build_p1();
 
-    let mut store = Store::new(engine, wasi_p1);
+    // Build memory limiter
+    let limits = StoreLimitsBuilder::new()
+        .memory_size(config.memory_limit_bytes as usize)
+        .build();
+
+    let mut store = Store::new(engine, SandboxState { wasi: wasi_p1, limits });
+    store.limiter(|state| &mut state.limits);
 
     // Set fuel limit
     store.set_fuel(config.fuel_limit)?;
 
     // Link WASI p1 and instantiate
     let mut linker = Linker::new(engine);
-    wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |s| s)?;
+    wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |state: &mut SandboxState| &mut state.wasi)?;
 
     linker.module(&mut store, "", module)?;
 

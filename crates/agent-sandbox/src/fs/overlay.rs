@@ -89,6 +89,9 @@ impl FsOverlay {
     }
 }
 
+/// Maximum file size to snapshot (50 MB). Larger files are skipped to prevent OOM.
+const MAX_SNAPSHOT_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 fn snapshot_dir(dir: &Path, snapshot: &mut HashMap<PathBuf, Vec<u8>>) -> Result<()> {
     if !dir.is_dir() {
         return Ok(());
@@ -101,6 +104,10 @@ fn snapshot_dir(dir: &Path, snapshot: &mut HashMap<PathBuf, Vec<u8>>) -> Result<
         if path.is_dir() {
             snapshot_dir(&path, snapshot)?;
         } else if path.is_file() {
+            let metadata = std::fs::metadata(&path)?;
+            if metadata.len() > MAX_SNAPSHOT_FILE_SIZE {
+                continue;
+            }
             let content = std::fs::read(&path)?;
             let hash = Sha256::digest(&content).to_vec();
             snapshot.insert(path, hash);
