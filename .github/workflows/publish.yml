@@ -68,7 +68,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Download WASM artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: toolbox-wasm
           path: wasm/toolbox/target/wasm32-wasip1/release/
@@ -132,12 +132,12 @@ jobs:
         run: npm install
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           path: crates/agent-sandbox-js/artifacts
 
       - name: Download JS bindings
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: js-bindings
           path: crates/agent-sandbox-js
@@ -158,13 +158,9 @@ jobs:
               cd -
             fi
           done
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish main package
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-crates:
     name: Publish to crates.io
@@ -179,7 +175,7 @@ jobs:
           targets: wasm32-wasip1
 
       - name: Download WASM artifact
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v7
         with:
           name: toolbox-wasm
           path: wasm/toolbox/target/wasm32-wasip1/release/
