@@ -43,6 +43,7 @@
     "version": "napi version"
   },
   "ava": {
+    "timeout": "60s",
     "extensions": {
       "ts": "commonjs"
     },

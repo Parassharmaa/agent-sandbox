@@ -44,8 +44,8 @@ fn get_or_compile_module() -> Result<(&'static Engine, &'static Module)> {
 
         let engine =
             Engine::new(&engine_config).map_err(|e| format!("engine creation failed: {e}"))?;
-        let module =
-            Module::new(&engine, wasm_bytes).map_err(|e| format!("module compilation failed: {e}"))?;
+        let module = Module::new(&engine, wasm_bytes)
+            .map_err(|e| format!("module compilation failed: {e}"))?;
 
         Ok(CachedModule { engine, module })
     });
@@ -86,8 +86,9 @@ impl WasiRuntime {
         let timeout = config.timeout;
 
         // Run in blocking thread since Wasmtime is synchronous, with a wall-clock timeout
-        let task =
-            tokio::task::spawn_blocking(move || exec_sync(engine, module, &config, &command, &args));
+        let task = tokio::task::spawn_blocking(move || {
+            exec_sync(engine, module, &config, &command, &args)
+        });
 
         match tokio::time::timeout(timeout, task).await {
             Ok(Ok(result)) => result,
@@ -173,7 +174,13 @@ fn exec_sync(
         .memory_size(config.memory_limit_bytes as usize)
         .build();
 
-    let mut store = Store::new(engine, SandboxState { wasi: wasi_p1, limits });
+    let mut store = Store::new(
+        engine,
+        SandboxState {
+            wasi: wasi_p1,
+            limits,
+        },
+    );
     store.limiter(|state| &mut state.limits);
 
     // Set fuel limit

@@ -380,10 +380,7 @@ async fn test_exec_uniq() {
         .unwrap();
 
     assert_eq!(result.exit_code, 0);
-    assert_eq!(
-        String::from_utf8_lossy(&result.stdout).trim(),
-        "a\nb\nc"
-    );
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "a\nb\nc");
 }
 
 #[tokio::test]
@@ -508,10 +505,7 @@ async fn test_exec_cut() {
         .unwrap();
 
     assert_eq!(result.exit_code, 0);
-    assert_eq!(
-        String::from_utf8_lossy(&result.stdout).trim(),
-        "b\n2"
-    );
+    assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "b\n2");
 }
 
 #[tokio::test]
@@ -597,10 +591,7 @@ async fn test_security_cat_cannot_read_host_files() {
     let (_tmp, sandbox) = temp_sandbox();
 
     // WASM sandbox should not have access to /etc/passwd via cat
-    let result = sandbox
-        .exec("cat", &["/etc/passwd".into()])
-        .await
-        .unwrap();
+    let result = sandbox.exec("cat", &["/etc/passwd".into()]).await.unwrap();
 
     // Should fail since /etc is not mounted
     assert_ne!(result.exit_code, 0);
@@ -697,7 +688,7 @@ async fn test_security_timeout_prevents_hang() {
     let config = SandboxConfig {
         work_dir: tmp.path().to_path_buf(),
         timeout: std::time::Duration::from_secs(2), // 2 second timeout
-        fuel_limit: u64::MAX,                        // Effectively unlimited fuel
+        fuel_limit: u64::MAX,                       // Effectively unlimited fuel
         ..Default::default()
     };
     let sandbox = Sandbox::new(config).unwrap();
@@ -724,10 +715,7 @@ async fn test_security_destroyed_sandbox_blocks_all_ops() {
     assert!(sandbox.read_file("any.txt").await.is_err());
     assert!(sandbox.write_file("any.txt", b"data").await.is_err());
     assert!(sandbox.list_dir(".").await.is_err());
-    assert!(sandbox
-        .exec("echo", &["hello".into()])
-        .await
-        .is_err());
+    assert!(sandbox.exec("echo", &["hello".into()]).await.is_err());
     assert!(sandbox.diff().await.is_err());
 }
 
@@ -748,10 +736,7 @@ async fn test_security_grep_cannot_read_host_files() {
 async fn test_security_rm_cannot_delete_outside_sandbox() {
     let (_tmp, sandbox) = temp_sandbox();
 
-    let result = sandbox
-        .exec("rm", &["/etc/hostname".into()])
-        .await
-        .unwrap();
+    let result = sandbox.exec("rm", &["/etc/hostname".into()]).await.unwrap();
 
     // rm outside /work should fail
     assert_ne!(result.exit_code, 0);
@@ -782,7 +767,10 @@ async fn test_security_multiple_sandboxes_isolated() {
         .exec("cat", &["/work/secret.txt".into()])
         .await
         .unwrap();
-    assert_ne!(result.exit_code, 0, "Sandbox2 should not see sandbox1's files");
+    assert_ne!(
+        result.exit_code, 0,
+        "Sandbox2 should not see sandbox1's files"
+    );
 
     // Sandbox1 should see its own file
     let result = sandbox1
