@@ -52,7 +52,7 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: lts/*
+          node-version: 20
 
       - name: Build WASM toolbox
         run: cargo +stable build --target wasm32-wasip1 --release --manifest-path wasm/toolbox/Cargo.toml
