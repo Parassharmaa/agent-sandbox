@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+pub use agent_fetch::{DomainPattern, FetchPolicy};
 use serde::{Deserialize, Serialize};
 
 /// Configuration for creating a sandbox instance.
@@ -29,6 +30,10 @@ pub struct SandboxConfig {
     /// Fuel limit for execution (higher = more compute allowed, default: 1 billion).
     #[serde(default = "default_fuel_limit")]
     pub fuel_limit: u64,
+
+    /// Fetch policy for HTTP networking. `None` disables all networking (default).
+    #[serde(default)]
+    pub fetch_policy: Option<FetchPolicy>,
 }
 
 /// A directory mount point mapping host path to guest path.
@@ -66,6 +71,7 @@ impl Default for SandboxConfig {
             timeout: default_timeout(),
             memory_limit_bytes: default_memory_limit(),
             fuel_limit: default_fuel_limit(),
+            fetch_policy: None,
         }
     }
 }

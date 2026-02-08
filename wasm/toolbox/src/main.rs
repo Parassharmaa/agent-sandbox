@@ -1,3 +1,4 @@
+pub mod fetch;
 mod tools;
 
 use std::env;

@@ -1,6 +1,10 @@
+use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, Trap};
+use agent_fetch::SafeClient;
+use wasmtime::{
+    Caller, Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, Trap,
+};
 use wasmtime_wasi::WasiCtx;
 use wasmtime_wasi::p2::pipe::{MemoryInputPipe, MemoryOutputPipe};
 
@@ -15,10 +19,39 @@ pub struct ExecResult {
     pub stderr: Vec<u8>,
 }
 
-/// Store data combining WASI context with resource limits.
+/// JSON request sent from WASM guest to host for fetch.
+#[derive(serde::Deserialize)]
+struct GuestFetchRequest {
+    url: String,
+    #[serde(default = "default_method")]
+    method: String,
+    #[serde(default)]
+    headers: HashMap<String, String>,
+    #[serde(default)]
+    body: Option<String>,
+}
+
+fn default_method() -> String {
+    "GET".to_string()
+}
+
+/// JSON response sent from host back to WASM guest.
+#[derive(serde::Serialize)]
+struct GuestFetchResponse {
+    status: u16,
+    headers: HashMap<String, String>,
+    body: String,
+    ok: bool,
+    error: Option<String>,
+}
+
+/// Store data combining WASI context with resource limits and fetch state.
 struct SandboxState {
     wasi: wasmtime_wasi::p1::WasiP1Ctx,
     limits: StoreLimits,
+    fetch_client: Option<Arc<SafeClient>>,
+    fetch_response: Option<Vec<u8>>,
+    tokio_handle: Option<tokio::runtime::Handle>,
 }
 
 /// Cached WASM engine and compiled module shared across all Sandbox instances.
@@ -65,18 +98,20 @@ pub struct WasiRuntime {
     engine: &'static Engine,
     module: &'static Module,
     config: Arc<SandboxConfig>,
+    fetch_client: Option<Arc<SafeClient>>,
 }
 
 impl WasiRuntime {
     /// Create a new WASI runtime with the given sandbox config.
     /// The toolbox WASM binary is compiled once and cached globally.
-    pub fn new(config: SandboxConfig) -> Result<Self> {
+    pub fn new(config: SandboxConfig, fetch_client: Option<Arc<SafeClient>>) -> Result<Self> {
         let (engine, module) = get_or_compile_module()?;
 
         Ok(Self {
             engine,
             module,
             config: Arc::new(config),
+            fetch_client,
         })
     }
 
@@ -88,10 +123,20 @@ impl WasiRuntime {
         let command = command.to_string();
         let args = args.to_vec();
         let timeout = config.timeout;
+        let fetch_client = self.fetch_client.clone();
+        let tokio_handle = tokio::runtime::Handle::current();
 
         // Run in blocking thread since Wasmtime is synchronous, with a wall-clock timeout
         let task = tokio::task::spawn_blocking(move || {
-            exec_sync(engine, module, &config, &command, &args)
+            exec_sync(
+                engine,
+                module,
+                &config,
+                &command,
+                &args,
+                fetch_client,
+                tokio_handle,
+            )
         });
 
         match tokio::time::timeout(timeout, task).await {
@@ -102,12 +147,54 @@ impl WasiRuntime {
     }
 }
 
+/// Read a byte slice from WASM guest memory.
+fn read_guest_memory(caller: &mut Caller<'_, SandboxState>, ptr: i32, len: i32) -> Option<Vec<u8>> {
+    if ptr < 0 || len < 0 {
+        return None;
+    }
+    let memory = caller.get_export("memory")?.into_memory()?;
+    let data = memory.data(&*caller);
+    let start = ptr as usize;
+    let end = start.checked_add(len as usize)?;
+    if end > data.len() {
+        return None;
+    }
+    Some(data[start..end].to_vec())
+}
+
+/// Write a byte slice into WASM guest memory.
+fn write_guest_memory(caller: &mut Caller<'_, SandboxState>, ptr: i32, buf: &[u8]) -> bool {
+    if ptr < 0 {
+        return false;
+    }
+    let memory = match caller.get_export("memory") {
+        Some(ext) => match ext.into_memory() {
+            Some(m) => m,
+            None => return false,
+        },
+        None => return false,
+    };
+    let data = memory.data_mut(caller);
+    let start = ptr as usize;
+    let end = match start.checked_add(buf.len()) {
+        Some(e) => e,
+        None => return false,
+    };
+    if end > data.len() {
+        return false;
+    }
+    data[start..end].copy_from_slice(buf);
+    true
+}
+
 fn exec_sync(
     engine: &Engine,
     module: &Module,
     config: &SandboxConfig,
     command: &str,
     args: &[String],
+    fetch_client: Option<Arc<SafeClient>>,
+    tokio_handle: tokio::runtime::Handle,
 ) -> Result<ExecResult> {
     // Build argv: [command, ...args]
     let mut argv: Vec<String> = vec![command.to_string()];
@@ -183,6 +270,9 @@ fn exec_sync(
         SandboxState {
             wasi: wasi_p1,
             limits,
+            fetch_client,
+            fetch_response: None,
+            tokio_handle: Some(tokio_handle),
         },
     );
     store.limiter(|state| &mut state.limits);
@@ -193,6 +283,108 @@ fn exec_sync(
     // Link WASI p1 and instantiate
     let mut linker = Linker::new(engine);
     wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |state: &mut SandboxState| &mut state.wasi)?;
+
+    // Link sandbox host functions for fetch bridge
+    linker.func_wrap(
+        "sandbox",
+        "__sandbox_fetch",
+        |mut caller: Caller<'_, SandboxState>, req_ptr: i32, req_len: i32| -> i32 {
+            // Read request JSON from guest memory
+            let req_bytes = match read_guest_memory(&mut caller, req_ptr, req_len) {
+                Some(b) => b,
+                None => return -1,
+            };
+
+            let guest_req: GuestFetchRequest = match serde_json::from_slice(&req_bytes) {
+                Ok(r) => r,
+                Err(_) => return -1,
+            };
+
+            let client = match caller.data().fetch_client.as_ref() {
+                Some(c) => c.clone(),
+                None => {
+                    // Networking disabled — store error response
+                    let resp = GuestFetchResponse {
+                        status: 0,
+                        headers: HashMap::new(),
+                        body: String::new(),
+                        ok: false,
+                        error: Some("networking disabled: configure fetch_policy to enable".into()),
+                    };
+                    caller.data_mut().fetch_response = Some(serde_json::to_vec(&resp).unwrap());
+                    return -2;
+                }
+            };
+
+            let handle = match caller.data().tokio_handle.as_ref() {
+                Some(h) => h.clone(),
+                None => return -1,
+            };
+
+            let fetch_req = agent_fetch::FetchRequest {
+                url: guest_req.url,
+                method: guest_req.method,
+                headers: guest_req.headers,
+                body: guest_req.body.map(|s| s.into_bytes()),
+            };
+
+            // Bridge async fetch to sync context via the tokio handle
+            let result = std::thread::scope(|_| handle.block_on(client.fetch(fetch_req)));
+
+            let resp = match result {
+                Ok(r) => GuestFetchResponse {
+                    status: r.status,
+                    headers: r.headers,
+                    body: String::from_utf8_lossy(&r.body).to_string(),
+                    ok: (200..300).contains(&(r.status as u32)),
+                    error: None,
+                },
+                Err(e) => GuestFetchResponse {
+                    status: 0,
+                    headers: HashMap::new(),
+                    body: String::new(),
+                    ok: false,
+                    error: Some(e.to_string()),
+                },
+            };
+
+            caller.data_mut().fetch_response = Some(serde_json::to_vec(&resp).unwrap());
+            0
+        },
+    )?;
+
+    linker.func_wrap(
+        "sandbox",
+        "__sandbox_fetch_response_len",
+        |caller: Caller<'_, SandboxState>| -> i32 {
+            caller
+                .data()
+                .fetch_response
+                .as_ref()
+                .map(|r| r.len() as i32)
+                .unwrap_or(0)
+        },
+    )?;
+
+    linker.func_wrap(
+        "sandbox",
+        "__sandbox_fetch_response_read",
+        |mut caller: Caller<'_, SandboxState>, buf_ptr: i32, buf_len: i32| -> i32 {
+            if buf_ptr < 0 || buf_len < 0 {
+                return -1;
+            }
+            let resp = match caller.data().fetch_response.as_ref() {
+                Some(r) => r.clone(),
+                None => return -1,
+            };
+            let copy_len = std::cmp::min(resp.len(), buf_len as usize);
+            if write_guest_memory(&mut caller, buf_ptr, &resp[..copy_len]) {
+                copy_len as i32
+            } else {
+                -1
+            }
+        },
+    )?;
 
     linker.module(&mut store, "", module)?;
 

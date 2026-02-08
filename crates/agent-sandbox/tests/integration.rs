@@ -1,5 +1,7 @@
-use agent_sandbox::Sandbox;
+use std::collections::HashMap;
+
 use agent_sandbox::config::SandboxConfig;
+use agent_sandbox::{DomainPattern, FetchPolicy, FetchRequest, Sandbox};
 
 fn temp_sandbox() -> (tempfile::TempDir, Sandbox) {
     let tmp = tempfile::tempdir().unwrap();
@@ -1098,4 +1100,326 @@ async fn test_node_security_no_host_filesystem() {
     // The WASM runtime only mounts /work
     let result = sandbox.exec("node", &["/etc/passwd".into()]).await.unwrap();
     assert_ne!(result.exit_code, 0);
+}
+
+// --- Fetch / Networking tests ---
+
+fn temp_sandbox_with_fetch(policy: FetchPolicy) -> (tempfile::TempDir, Sandbox) {
+    let tmp = tempfile::tempdir().unwrap();
+    let config = SandboxConfig {
+        work_dir: tmp.path().to_path_buf(),
+        fetch_policy: Some(policy),
+        ..Default::default()
+    };
+    let sandbox = Sandbox::new(config).unwrap();
+    (tmp, sandbox)
+}
+
+#[tokio::test]
+async fn test_fetch_disabled_without_policy() {
+    let (_tmp, sandbox) = temp_sandbox();
+
+    let request = FetchRequest {
+        url: "https://example.com".into(),
+        method: "GET".into(),
+        headers: HashMap::new(),
+        body: None,
+    };
+
+    let result = sandbox.fetch(request).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("networking disabled"),
+        "Expected 'networking disabled', got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_basic_get() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let request = FetchRequest {
+        url: "https://example.com".into(),
+        method: "GET".into(),
+        headers: HashMap::new(),
+        body: None,
+    };
+
+    let result = sandbox.fetch(request).await.unwrap();
+    assert_eq!(result.status, 200);
+    let body = String::from_utf8_lossy(&result.body);
+    assert!(
+        body.contains("Example Domain"),
+        "Expected 'Example Domain' in body"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_blocked_domain() {
+    let policy = FetchPolicy {
+        blocked_domains: vec![DomainPattern("example.com".into())],
+        ..Default::default()
+    };
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(policy);
+
+    let request = FetchRequest {
+        url: "https://example.com".into(),
+        method: "GET".into(),
+        headers: HashMap::new(),
+        body: None,
+    };
+
+    let result = sandbox.fetch(request).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.to_lowercase().contains("block") || err.to_lowercase().contains("denied"),
+        "Expected domain blocked error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_ssrf_private_ip_blocked() {
+    let policy = FetchPolicy {
+        deny_private_ips: true,
+        ..Default::default()
+    };
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(policy);
+
+    let request = FetchRequest {
+        url: "http://127.0.0.1".into(),
+        method: "GET".into(),
+        headers: HashMap::new(),
+        body: None,
+    };
+
+    let result = sandbox.fetch(request).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.to_lowercase().contains("private") || err.to_lowercase().contains("block"),
+        "Expected private IP blocked error, got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_fetch_allowed_domains_only() {
+    let policy = FetchPolicy {
+        allowed_domains: Some(vec![DomainPattern("example.com".into())]),
+        ..Default::default()
+    };
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(policy);
+
+    // Allowed domain should work
+    let request = FetchRequest {
+        url: "https://example.com".into(),
+        method: "GET".into(),
+        headers: HashMap::new(),
+        body: None,
+    };
+    let result = sandbox.fetch(request).await.unwrap();
+    assert_eq!(result.status, 200);
+
+    // Non-allowed domain should fail
+    let request2 = FetchRequest {
+        url: "https://httpbin.org/get".into(),
+        method: "GET".into(),
+        headers: HashMap::new(),
+        body: None,
+    };
+    let result2 = sandbox.fetch(request2).await;
+    assert!(result2.is_err());
+}
+
+#[tokio::test]
+async fn test_exec_curl_basic() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec("curl", &["https://example.com".into()])
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let body = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        body.contains("Example Domain"),
+        "Expected 'Example Domain' in curl output"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("HTTP 200"),
+        "Expected 'HTTP 200' in stderr, got: {stderr}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_curl_with_headers() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec(
+            "curl",
+            &[
+                "-H".into(),
+                "Accept: application/json".into(),
+                "https://httpbin.org/headers".into(),
+            ],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let body = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        body.contains("Accept") || body.contains("accept"),
+        "Expected headers in response body"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_curl_disabled_without_policy() {
+    let (_tmp, sandbox) = temp_sandbox();
+
+    let result = sandbox.exec("curl", &["https://example.com".into()]).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("networking disabled"),
+        "Expected 'networking disabled', got: {err}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_curl_output_file() {
+    let (tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec(
+            "curl",
+            &[
+                "-o".into(),
+                "output.html".into(),
+                "https://example.com".into(),
+            ],
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+
+    // Verify file was written
+    let content = std::fs::read_to_string(tmp.path().join("output.html")).unwrap();
+    assert!(
+        content.contains("Example Domain"),
+        "Expected 'Example Domain' in output file"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_js_fetch() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec_js("var r = fetch('https://example.com'); console.log(r.status)")
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("200"), "Expected '200' in stdout: {stdout}");
+}
+
+#[tokio::test]
+async fn test_exec_js_fetch_with_options() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec_js(
+            r#"var r = fetch('https://httpbin.org/post', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"key":"value"}' }); console.log(r.status)"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("200"), "Expected '200' in stdout: {stdout}");
+}
+
+#[tokio::test]
+async fn test_exec_js_fetch_response_body() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec_js("var r = fetch('https://example.com'); console.log(r.body.indexOf('Example Domain') >= 0)")
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("true"),
+        "Expected 'true' in stdout: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_js_fetch_disabled() {
+    let (_tmp, sandbox) = temp_sandbox();
+
+    let result = sandbox
+        .exec_js("try { fetch('https://example.com'); } catch(e) { console.log('error: ' + e.message); }")
+        .await
+        .unwrap();
+
+    // Should either error or print error message
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    let combined = format!("{stdout}{stderr}");
+    assert!(
+        combined.contains("disabled")
+            || combined.contains("error")
+            || combined.contains("networking")
+            || result.exit_code != 0,
+        "Expected fetch to fail when networking is disabled. stdout: {stdout}, stderr: {stderr}, exit: {}",
+        result.exit_code
+    );
+}
+
+#[tokio::test]
+async fn test_exec_js_fetch_text_method() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec_js(
+            "var r = fetch('https://example.com'); console.log(r.text().indexOf('Example') >= 0)",
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("true"),
+        "Expected 'true' in stdout: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_js_fetch_ok_property() {
+    let (_tmp, sandbox) = temp_sandbox_with_fetch(FetchPolicy::default());
+
+    let result = sandbox
+        .exec_js("var r = fetch('https://example.com'); console.log(r.ok)")
+        .await
+        .unwrap();
+
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("true"),
+        "Expected 'true' in stdout: {stdout}"
+    );
 }

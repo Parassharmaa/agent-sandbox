@@ -1,6 +1,6 @@
 {
   "name": "@parassharmaa/agent-sandbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sandboxed execution environment for AI agents via WASM",
   "main": "index.js",
   "types": "index.d.ts",

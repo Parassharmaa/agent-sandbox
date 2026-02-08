@@ -25,6 +25,12 @@ pub enum SandboxError {
     )]
     ToolboxNotAvailable,
 
+    #[error("networking disabled: configure fetch_policy to enable")]
+    NetworkingDisabled,
+
+    #[error("fetch error: {0}")]
+    Fetch(String),
+
     #[error("{0}")]
     Other(String),
 }

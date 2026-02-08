@@ -42,6 +42,8 @@ pub const AVAILABLE_TOOLS: &[&str] = &[
     "git",
     // JavaScript runtime
     "node",
+    // Networking
+    "curl",
     // Shell utils
     "echo",
     "printf",
