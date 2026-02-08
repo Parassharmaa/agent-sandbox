@@ -33,19 +33,23 @@ static MODULE_CACHE: OnceLock<std::result::Result<CachedModule, String>> = OnceL
 
 fn get_or_compile_module() -> Result<(&'static Engine, &'static Module)> {
     let cached = MODULE_CACHE.get_or_init(|| {
-        let wasm_bytes = include_bytes!(env!("TOOLBOX_WASM_PATH"));
+        let precompiled_bytes = include_bytes!(env!("TOOLBOX_CWASM_PATH"));
 
-        if wasm_bytes.is_empty() {
+        if precompiled_bytes.is_empty() {
             return Err("WASM toolbox not available".to_string());
         }
 
+        // Engine config MUST match build.rs exactly
         let mut engine_config = Config::new();
         engine_config.consume_fuel(true);
 
         let engine =
             Engine::new(&engine_config).map_err(|e| format!("engine creation failed: {e}"))?;
-        let module = Module::new(&engine, wasm_bytes)
-            .map_err(|e| format!("module compilation failed: {e}"))?;
+
+        // SAFETY: The precompiled bytes come from our own build.rs via
+        // Engine::precompile_module() with the same engine config and wasmtime version.
+        let module = unsafe { Module::deserialize(&engine, precompiled_bytes) }
+            .map_err(|e| format!("module deserialization failed: {e}"))?;
 
         Ok(CachedModule { engine, module })
     });

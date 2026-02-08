@@ -20,5 +20,8 @@ thiserror = "2"
 tempfile = "3"
 sha2 = "0.10"
 
+[build-dependencies]
+wasmtime = "41"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

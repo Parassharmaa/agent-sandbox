@@ -19,24 +19,38 @@ fn main() {
             .to_string()
     });
 
-    let dest = out_dir.join("toolbox.wasm");
-
-    // Copy the WASM binary to OUT_DIR if it exists
     if std::path::Path::new(&wasm_path).exists() {
-        std::fs::copy(&wasm_path, &dest).expect("Failed to copy toolbox.wasm");
+        let wasm_bytes = std::fs::read(&wasm_path).expect("Failed to read toolbox.wasm");
+
+        // AOT precompile: compile WASM to native code at build time.
+        // Engine config here MUST match runtime config in runtime/mod.rs.
+        let mut engine_config = wasmtime::Config::new();
+        engine_config.consume_fuel(true);
+
+        let engine =
+            wasmtime::Engine::new(&engine_config).expect("Failed to create wasmtime engine");
+        let precompiled = engine
+            .precompile_module(&wasm_bytes)
+            .expect("Failed to precompile WASM module");
+
+        let dest = out_dir.join("toolbox.cwasm");
+        std::fs::write(&dest, precompiled).expect("Failed to write precompiled module");
+
         println!("cargo:rustc-env=TOOLBOX_WASM_AVAILABLE=1");
+        println!("cargo:rustc-env=TOOLBOX_CWASM_PATH={}", dest.display());
     } else {
         // Create a placeholder for development (allows cargo check without WASM build)
-        // The actual WASM binary must be built before running tests
-        std::fs::write(&dest, b"").expect("Failed to create placeholder toolbox.wasm");
+        let dest = out_dir.join("toolbox.cwasm");
+        std::fs::write(&dest, b"").expect("Failed to create placeholder");
+
         println!("cargo:rustc-env=TOOLBOX_WASM_AVAILABLE=0");
+        println!("cargo:rustc-env=TOOLBOX_CWASM_PATH={}", dest.display());
         println!(
-            "cargo:warning=toolbox.wasm not found at {}. Build with: cargo build --target wasm32-wasip1 -p agent-toolbox --release",
+            "cargo:warning=toolbox.wasm not found at {}. Build with: cargo build --target wasm32-wasip1 --manifest-path wasm/toolbox/Cargo.toml --release",
             wasm_path
         );
     }
 
-    println!("cargo:rustc-env=TOOLBOX_WASM_PATH={}", dest.display());
     println!("cargo:rerun-if-changed={}", wasm_path);
     println!("cargo:rerun-if-env-changed=TOOLBOX_WASM_PATH");
 }
