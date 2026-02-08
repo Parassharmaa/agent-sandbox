@@ -1,6 +1,6 @@
 [package]
 name = "agent-sandbox"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "A sandboxed execution environment for AI agents via WASM"
 license = "MIT"
