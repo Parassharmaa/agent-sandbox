@@ -18,13 +18,28 @@ pub mod sort;
 pub mod tr;
 pub mod uniq;
 pub mod wc;
+pub mod awk;
+pub mod tac;
+pub mod rev;
+pub mod nl;
+pub mod paste;
+pub mod comm;
+pub mod join;
+pub mod fold;
+pub mod column;
+pub mod expand_tool;
+pub mod unexpand;
+pub mod strings;
+pub mod od;
 
-// Data
+// Data / hashing
 pub mod base64_tool;
 pub mod diff;
 pub mod jq;
 pub mod patch;
 pub mod sha256sum;
+pub mod sha1sum;
+pub mod md5sum;
 pub mod xxd;
 
 // File management
@@ -36,6 +51,10 @@ pub mod mkdir;
 pub mod mv;
 pub mod rm;
 pub mod stat;
+pub mod readlink;
+pub mod rmdir;
+pub mod split;
+pub mod file;
 
 // Archive
 pub mod gzip;
@@ -55,3 +74,11 @@ pub mod echo;
 pub mod env;
 pub mod printf;
 pub mod xargs;
+pub mod seq;
+pub mod sleep;
+pub mod which;
+pub mod whoami;
+pub mod hostname;
+pub mod printenv;
+pub mod date;
+pub mod expr;

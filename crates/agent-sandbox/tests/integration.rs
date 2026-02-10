@@ -1423,3 +1423,411 @@ async fn test_exec_js_fetch_ok_property() {
         "Expected 'true' in stdout: {stdout}"
     );
 }
+
+// ===== Shell interpreter tests =====
+
+#[tokio::test]
+async fn test_shell_echo() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "echo hello world".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "hello world");
+}
+
+#[tokio::test]
+async fn test_shell_exit_code() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "exit 42".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 42);
+}
+
+#[tokio::test]
+async fn test_shell_variables() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "X=hello; echo $X".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "hello");
+}
+
+#[tokio::test]
+async fn test_shell_and_chain() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "true && echo yes".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "yes");
+}
+
+#[tokio::test]
+async fn test_shell_or_chain() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "false || echo fallback".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "fallback");
+}
+
+#[tokio::test]
+async fn test_shell_if_then() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "if true; then echo yes; fi".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "yes");
+}
+
+#[tokio::test]
+async fn test_shell_if_else() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "sh",
+            &[
+                "-c".into(),
+                "if false; then echo yes; else echo no; fi".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "no");
+}
+
+#[tokio::test]
+async fn test_shell_for_loop() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "sh",
+            &["-c".into(), "for i in a b c; do echo $i; done".into()],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "a\nb\nc");
+}
+
+#[tokio::test]
+async fn test_shell_function() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "greet() { echo hi; }; greet".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "hi");
+}
+
+#[tokio::test]
+async fn test_shell_pipe() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "echo hello world | wc -w".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "2");
+}
+
+#[tokio::test]
+async fn test_shell_redirect_to_file() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec(
+            "sh",
+            &[
+                "-c".into(),
+                "echo test123 > /work/out.txt && cat /work/out.txt".into(),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "test123");
+}
+
+#[tokio::test]
+async fn test_shell_var_default() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "echo ${UNSET:-fallback}".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "fallback");
+}
+
+#[tokio::test]
+async fn test_shell_command_substitution() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("sh", &["-c".into(), "echo $(echo inner)".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "inner");
+}
+
+// ===== New command tests =====
+
+#[tokio::test]
+async fn test_exec_seq() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("seq", &["3".into()]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "1\n2\n3");
+}
+
+#[tokio::test]
+async fn test_exec_tac() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox.write_file("lines.txt", b"a\nb\nc\n").await.unwrap();
+    let result = sandbox
+        .exec("tac", &["/work/lines.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "c\nb\na");
+}
+
+#[tokio::test]
+async fn test_exec_rev() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox
+        .write_file("rev.txt", b"hello\nworld\n")
+        .await
+        .unwrap();
+    let result = sandbox
+        .exec("rev", &["/work/rev.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "olleh\ndlrow");
+}
+
+#[tokio::test]
+async fn test_exec_whoami() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("whoami", &[]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "sandbox");
+}
+
+#[tokio::test]
+async fn test_exec_which() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("which", &["echo".into()]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("echo"), "Expected path containing 'echo'");
+}
+
+#[tokio::test]
+async fn test_exec_true_false() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result_true = sandbox.exec("true", &[]).await.unwrap();
+    assert_eq!(result_true.exit_code, 0);
+    let result_false = sandbox.exec("false", &[]).await.unwrap();
+    assert_eq!(result_false.exit_code, 1);
+}
+
+#[tokio::test]
+async fn test_exec_sleep() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("sleep", &["0".into()]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_exec_printenv() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("printenv", &["TOOLBOX_CMD".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "printenv");
+}
+
+#[tokio::test]
+async fn test_exec_expr() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox
+        .exec("expr", &["3".into(), "+".into(), "4".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "7");
+}
+
+#[tokio::test]
+async fn test_exec_nl() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox.write_file("nl.txt", b"a\nb\nc\n").await.unwrap();
+    let result = sandbox.exec("nl", &["/work/nl.txt".into()]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("1"), "Expected line numbers in output");
+    assert!(stdout.contains("a"), "Expected content in output");
+}
+
+#[tokio::test]
+async fn test_exec_fold() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox
+        .write_file("fold.txt", b"abcdefghij\n")
+        .await
+        .unwrap();
+    let result = sandbox
+        .exec("fold", &["-w".into(), "5".into(), "/work/fold.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(stdout.contains("abcde"), "Expected folded output");
+    assert!(stdout.contains("fghij"), "Expected folded second line");
+}
+
+#[tokio::test]
+async fn test_exec_md5sum() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox.write_file("md5.txt", b"hello\n").await.unwrap();
+    let result = sandbox
+        .exec("md5sum", &["/work/md5.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    // MD5 of "hello\n" is b1946ac92492d2347c6235b4d2611184
+    assert!(
+        stdout.contains("b1946ac92492d2347c6235b4d2611184"),
+        "Expected MD5 hash in output: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_sha1sum() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox.write_file("sha1.txt", b"hello\n").await.unwrap();
+    let result = sandbox
+        .exec("sha1sum", &["/work/sha1.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    // SHA1 of "hello\n" is f572d396fae9206628714fb2ce00f72e94f2258f
+    assert!(
+        stdout.contains("f572d396fae9206628714fb2ce00f72e94f2258f"),
+        "Expected SHA1 hash in output: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_rmdir() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox
+        .exec("mkdir", &["-p".into(), "/work/emptydir".into()])
+        .await
+        .unwrap();
+    let result = sandbox
+        .exec("rmdir", &["/work/emptydir".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+}
+
+#[tokio::test]
+async fn test_exec_awk_basic() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox
+        .write_file("awk.txt", b"hello world\nfoo bar\n")
+        .await
+        .unwrap();
+    let result = sandbox
+        .exec("awk", &["{print $2}".into(), "/work/awk.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert_eq!(stdout.trim(), "world\nbar");
+}
+
+#[tokio::test]
+async fn test_exec_file() {
+    let (_tmp, sandbox) = temp_sandbox();
+    sandbox
+        .write_file("test.txt", b"hello world\n")
+        .await
+        .unwrap();
+    let result = sandbox
+        .exec("file", &["/work/test.txt".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("text") || stdout.contains("ASCII"),
+        "Expected text file detection: {stdout}"
+    );
+}
+
+#[tokio::test]
+async fn test_exec_date() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let result = sandbox.exec("date", &[]).await.unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(!stdout.trim().is_empty(), "Expected date output");
+}
+
+#[tokio::test]
+async fn test_exec_strings() {
+    let (_tmp, sandbox) = temp_sandbox();
+    let mut data = vec![0u8; 10];
+    data.extend_from_slice(b"FINDME_STRING");
+    data.extend_from_slice(&vec![0u8; 10]);
+    sandbox.write_file("bin.dat", &data).await.unwrap();
+    let result = sandbox
+        .exec("strings", &["/work/bin.dat".into()])
+        .await
+        .unwrap();
+    assert_eq!(result.exit_code, 0);
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    assert!(
+        stdout.contains("FINDME_STRING"),
+        "Expected extracted string: {stdout}"
+    );
+}
